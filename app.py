@@ -111,10 +111,3 @@ def get_kickstart_floppy(image_file):
         return jsonify({"error": "File not found"}), 404
     
     return send_file("ks/" + image_file)
-
-
-@app.teardown_appcontext
-def close_connection(exception):
-    db = getattr(g, '_database', None)
-    if db is not None:
-        db.close()
