@@ -1,0 +1,4 @@
+Flask==3.1.0
+marshmallow==3.26.1
+gunicorn==23.0.0
+Flask-SQLAlchemy==3.1.1
