@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, send_file, g
+from flask_apscheduler import APScheduler
 from flask_sqlalchemy import SQLAlchemy
 from marshmallow import Schema, fields, exceptions as marshmallow_exceptions
 from makeflop import Floppy
@@ -31,10 +32,10 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
 db.init_app(app)
 
 class KickstartFloppy(db.Model):
-    id: Mapped[int] = mapped_column(primary_key=True)
-    image_file: Mapped[str] = mapped_column(unique=True)
-    allowed_ip: Mapped[str]
-    expires_at: Mapped[str]
+    id = db.Column(db.Integer, primary_key=True)
+    image_file = db.Column(db.String(12), unique=True, nullable=False)
+    allowed_ip = db.Column(db.String(15), nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
     
     def __init__(self, image_file, allowed_ip, expires_at):
         self.image_file = image_file
@@ -53,6 +54,22 @@ class KickstartFloppy(db.Model):
 with app.app_context():
     db.create_all()
 
+scheduler = APScheduler()
+scheduler.init_app(app)
+@scheduler.task('interval', id='cleanup', seconds=60)
+def cleanup():
+    with app.app_context():
+        cleanup = KickstartFloppy.query.filter(KickstartFloppy.expires_at < datetime.datetime.now()).all()
+        if len(cleanup) > 0:
+            app.logger.info(f"{len(cleanup)} expired entries found")
+        for item in cleanup:
+            app.logger.info(f"Deleting expired entry: {item.image_file}")
+            image_path = os.path.join(app.instance_path, item.image_file)
+            os.remove(image_path)
+            db.session.delete(item)
+        db.session.commit()
+
+scheduler.start()
 
 @app.route('/ks', methods=['POST'])
 def create_kickstart_floppy():
@@ -93,6 +110,7 @@ reboot
     floppy_data = KickstartFloppy(image_file, allowed_ip, expires_at)
     db.session.add(floppy_data)
     db.session.commit()
+    app.logger.info(f"Created {image_file} with access for {allowed_ip}")
     return jsonify(floppy_data.toJSON()), 201
 
 
@@ -110,4 +128,8 @@ def get_kickstart_floppy(image_file):
     if not os.path.exists(image_path):
         return jsonify({"error": "File not found"}), 404
     
+    app.logger.info(f"Serving {image_file} for {request.remote_addr[0]}")
     return send_file("ks/" + image_file)
+
+if __name__ == '__main__':
+    app.run()
