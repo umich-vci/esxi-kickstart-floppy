@@ -61,12 +61,12 @@ def cleanup():
         cleanup = KickstartFloppy.query.filter(KickstartFloppy.expires_at < datetime.datetime.now()).all()
         if len(cleanup) > 0:
             app.logger.info(f"{len(cleanup)} expired entries found")
-        for item in cleanup:
-            app.logger.info(f"Deleting expired entry: {item.image_file}")
-            image_path = os.path.join(app.instance_path, item.image_file)
-            os.remove(image_path)
-            db.session.delete(item)
-        db.session.commit()
+            for item in cleanup:
+                app.logger.info(f"Deleting expired entry: {item.image_file}")
+                image_path = os.path.join(app.instance_path, item.image_file)
+                os.remove(image_path)
+                db.session.delete(item)
+            db.session.commit()
 
 scheduler.start()
 
