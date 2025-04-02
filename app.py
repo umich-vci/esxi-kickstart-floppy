@@ -3,7 +3,6 @@ from flask_apscheduler import APScheduler
 from flask_sqlalchemy import SQLAlchemy
 from marshmallow import Schema, fields, exceptions as marshmallow_exceptions
 from makeflop import Floppy
-from sqlalchemy.orm import Mapped, mapped_column
 import string
 import random
 import os
