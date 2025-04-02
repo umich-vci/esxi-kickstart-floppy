@@ -100,8 +100,16 @@ reboot
 def get_kickstart_floppy(image_file):
     floppy = db.session.execute(db.select(KickstartFloppy).filter_by(image_file=image_file)).scalar_one_or_none()
 
+    if floppy is None:
+        return jsonify({"error": "File not found"}), 404
+
     if floppy.allowed_ip != request.remote_addr[0]:
         return jsonify({"error": "Your IP is not permitted to access this resource"}), 401
+    
+    image_path = os.path.join(app.instance_path, image_file)
+    if not os.path.exists(image_path):
+        return jsonify({"error": "File not found"}), 404
+    
     return send_file("ks/" + image_file)
 
 
