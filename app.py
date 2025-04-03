@@ -1,4 +1,4 @@
-from flask import request, send_file
+from flask import request, send_file, url_for
 from apiflask import APIFlask, abort, HTTPTokenAuth, FileSchema, Schema
 from flask_apscheduler import APScheduler
 from flask_sqlalchemy import SQLAlchemy
@@ -28,6 +28,7 @@ class KickstartFloppyIn(Schema):
 
 class KickstartFloppyOut(Schema):
     image_file = String(required=True)
+    image_url = String(required=True)
     allowed_ip = String(required=True)
     expires_at = DateTime(required=True)
 
@@ -52,11 +53,13 @@ tokens = app.config['TOKENS']
 class KickstartFloppyModel(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     image_file = db.Column(db.String(12), unique=True, nullable=False)
+    image_url = db.Column(db.String(255), unique=True, nullable=False)
     allowed_ip = db.Column(db.String(39), nullable=False)
     expires_at = db.Column(db.DateTime, nullable=False)
 
-    def __init__(self, image_file, allowed_ip, expires_at):
+    def __init__(self, image_file, image_url, allowed_ip, expires_at):
         self.image_file = image_file
+        self.image_url = image_url
         self.allowed_ip = allowed_ip
         self.expires_at = expires_at
 
@@ -127,7 +130,9 @@ reboot
     current_time = datetime.datetime.now()
     expires_at = current_time + datetime.timedelta(minutes=60)
     allowed_ip = str(json_data['allowed_ip'])
-    floppy_data = KickstartFloppyModel(image_file, allowed_ip, expires_at)
+    image_url = url_for('get_kickstart_floppy', image_file=image_file,
+                        _external=True)
+    floppy_data = KickstartFloppyModel(image_file, image_url, allowed_ip, expires_at)
     db.session.add(floppy_data)
     db.session.commit()
     app.logger.info(f"Created {image_file} with access for {allowed_ip}")
