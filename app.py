@@ -34,6 +34,7 @@ class KickstartFloppyOut(Schema):
 
 db = SQLAlchemy()
 app = APIFlask(__name__)
+application = app # for mod_wsgi compatibility
 DATABASE = 'ks.db'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + DATABASE
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
