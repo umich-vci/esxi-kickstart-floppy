@@ -21,7 +21,7 @@ class KickstartFloppyIn(Schema):
     netmask = IPv4(required=True)
     gateway = IPv4(required=True)
     nameserver = List(IPv4(), required=True)
-    vlanid = Integer(required=False, validate=Range(min=1,max=4094))
+    vlanid = Integer(required=False, validate=Range(min=1, max=4094))
     addvmportgroup = Boolean(required=False, load_default=True)
     allowed_ip = IPv4(required=True)
 
@@ -47,12 +47,13 @@ except FileNotFoundError:
     print(app.config['TOKENS'])
 tokens = app.config['TOKENS']
 
+
 class KickstartFloppyModel(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     image_file = db.Column(db.String(12), unique=True, nullable=False)
     allowed_ip = db.Column(db.String(39), nullable=False)
     expires_at = db.Column(db.DateTime, nullable=False)
-    
+
     def __init__(self, image_file, allowed_ip, expires_at):
         self.image_file = image_file
         self.allowed_ip = allowed_ip
@@ -62,12 +63,16 @@ class KickstartFloppyModel(db.Model):
 with app.app_context():
     db.create_all()
 
+
 scheduler = APScheduler()
 scheduler.init_app(app)
+
+
 @scheduler.task('interval', id='cleanup', seconds=60)
 def cleanup():
     with app.app_context():
-        cleanup = KickstartFloppyModel.query.filter(KickstartFloppyModel.expires_at < datetime.datetime.now()).all()
+        cleanup = KickstartFloppyModel.query.filter(
+            KickstartFloppyModel.expires_at < datetime.datetime.now()).all()
         if len(cleanup) > 0:
             app.logger.info(f"{len(cleanup)} expired entries found")
             for item in cleanup:
@@ -77,12 +82,15 @@ def cleanup():
                 db.session.delete(item)
             db.session.commit()
 
+
 scheduler.start()
+
 
 @auth.verify_token
 def verify_token(token):
     if token in tokens:
         return tokens[token]
+
 
 @app.post('/ks')
 @app.auth_required(auth)
@@ -92,7 +100,7 @@ def create_kickstart_floppy(json_data):
     if 'vlanid' in json_data:
         vlanid = f" --vlanid={json_data['vlanid']}"
     else:
-        vlanid =""
+        vlanid = ""
     kickstart_contents = """vmaccepteula
 rootpw --iscrypted {rootpw}
 install --disk={disk}
@@ -112,7 +120,8 @@ reboot
     )
     floppy = Floppy()
     floppy.add_file_path('ks.cfg', kickstart_contents.encode('utf-8'))
-    image_file = ''.join(random.choices(string.ascii_letters + string.digits, k=8)) + '.img'
+    image_file = ''.join(
+        random.choices(string.ascii_letters + string.digits, k=8)) + '.img'
     floppy.save(os.path.join(app.instance_path, image_file))
     current_time = datetime.datetime.now()
     expires_at = current_time + datetime.timedelta(minutes=60)
@@ -125,22 +134,26 @@ reboot
 
 
 @app.get('/ks/<string:image_file>')
-@app.output(FileSchema, content_type='application/octet-stream', status_code=200)
+@app.output(FileSchema,
+            content_type='application/octet-stream', status_code=200)
 def get_kickstart_floppy(image_file):
-    floppy = db.session.execute(db.select(KickstartFloppyModel).filter_by(image_file=image_file)).scalar_one_or_none()
+    floppy = db.session.execute(
+        db.select(KickstartFloppyModel).filter_by(
+            image_file=image_file)).scalar_one_or_none()
 
     if floppy is None:
         abort(404, 'File not found')
 
     if floppy.allowed_ip != request.remote_addr:
-        abort(401, f'{request.remote_addr} is not permitted to access this resource')
-    
+        abort(401, f'{request.remote_addr} is not permitted')
+
     image_path = os.path.join(app.instance_path, image_file)
     if not os.path.exists(image_path):
         abort(404, 'File not found')
-    
+
     app.logger.info(f"Serving {image_file} for {request.remote_addr[0]}")
     return send_file(image_path)
+
 
 if __name__ == '__main__':
     app.run()
