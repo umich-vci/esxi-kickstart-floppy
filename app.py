@@ -1,5 +1,5 @@
 from flask import request, send_file
-from apiflask import APIFlask, abort, Schema, FileSchema
+from apiflask import APIFlask, abort, HTTPTokenAuth, FileSchema, Schema
 from flask_apscheduler import APScheduler
 from flask_sqlalchemy import SQLAlchemy
 from apiflask.fields import Integer, String, IPv4, List, Boolean, DateTime
@@ -8,6 +8,7 @@ from makeflop import Floppy
 import string
 import random
 import os
+import secrets
 import datetime
 
 
@@ -37,6 +38,14 @@ DATABASE = 'ks.db'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + DATABASE
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
 db.init_app(app)
+auth = HTTPTokenAuth()
+try:
+    app.config.from_pyfile(os.path.join(app.instance_path, 'tokens.py'))
+except FileNotFoundError:
+    app.logger.warning("tokens.py not found, generating default token")
+    app.config['TOKENS'] = {secrets.token_urlsafe(): 'default'}
+    print(app.config['TOKENS'])
+tokens = app.config['TOKENS']
 
 class KickstartFloppyModel(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -70,7 +79,13 @@ def cleanup():
 
 scheduler.start()
 
+@auth.verify_token
+def verify_token(token):
+    if token in tokens:
+        return tokens[token]
+
 @app.post('/ks')
+@app.auth_required(auth)
 @app.input(KickstartFloppyIn, location='json')
 @app.output(KickstartFloppyOut, status_code=201)
 def create_kickstart_floppy(json_data):
