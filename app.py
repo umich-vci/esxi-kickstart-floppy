@@ -1,7 +1,9 @@
-from flask import Flask, request, jsonify, send_file, g
+from flask import request, send_file
+from apiflask import APIFlask, abort, Schema, FileSchema
 from flask_apscheduler import APScheduler
 from flask_sqlalchemy import SQLAlchemy
-from marshmallow import Schema, fields, exceptions as marshmallow_exceptions
+from apiflask.fields import Integer, String, IPv4, List, Boolean, DateTime
+from apiflask.validators import Range
 from makeflop import Floppy
 import string
 import random
@@ -9,45 +11,43 @@ import os
 import datetime
 
 
-class KickstartFloppyCreate(Schema):
-    hostname = fields.Str(required=True)
-    rootpw = fields.Str(required=True)
-    disk = fields.Str(required=True)
-    device = fields.Str(required=False, load_default='vmnic0')
-    ip = fields.IPv4(required=True)
-    netmask = fields.IPv4(required=True)
-    gateway = fields.IPv4(required=True)
-    nameserver = fields.List(fields.IPv4(), required=True)
-    vlanid = fields.Int(required=False, min=0, max=4094, load_default=0)
-    addvmportgroup = fields.Bool(required=False, load_default=True)
-    allowed_ip = fields.IPv4(required=True)
+class KickstartFloppyIn(Schema):
+    hostname = String(required=True)
+    rootpw = String(required=True)
+    disk = String(required=True)
+    device = String(required=False, load_default='vmnic0')
+    ip = IPv4(required=True)
+    netmask = IPv4(required=True)
+    gateway = IPv4(required=True)
+    nameserver = List(IPv4(), required=True)
+    vlanid = Integer(required=False, validate=Range(min=1,max=4094))
+    addvmportgroup = Boolean(required=False, load_default=True)
+    allowed_ip = IPv4(required=True)
+
+
+class KickstartFloppyOut(Schema):
+    image_file = String(required=True)
+    allowed_ip = String(required=True)
+    expires_at = DateTime(required=True)
 
 
 db = SQLAlchemy()
-app = Flask(__name__)
+app = APIFlask(__name__)
 DATABASE = 'ks.db'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + DATABASE
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
 db.init_app(app)
 
-class KickstartFloppy(db.Model):
+class KickstartFloppyModel(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     image_file = db.Column(db.String(12), unique=True, nullable=False)
-    allowed_ip = db.Column(db.String(15), nullable=False)
+    allowed_ip = db.Column(db.String(39), nullable=False)
     expires_at = db.Column(db.DateTime, nullable=False)
     
     def __init__(self, image_file, allowed_ip, expires_at):
         self.image_file = image_file
         self.allowed_ip = allowed_ip
         self.expires_at = expires_at
-    
-
-    def toJSON(self):
-        return {
-            'image_file': self.image_file,
-            'allowed_ip': self.allowed_ip,
-            'expires_at': self.expires_at
-        }
 
 
 with app.app_context():
@@ -58,7 +58,7 @@ scheduler.init_app(app)
 @scheduler.task('interval', id='cleanup', seconds=60)
 def cleanup():
     with app.app_context():
-        cleanup = KickstartFloppy.query.filter(KickstartFloppy.expires_at < datetime.datetime.now()).all()
+        cleanup = KickstartFloppyModel.query.filter(KickstartFloppyModel.expires_at < datetime.datetime.now()).all()
         if len(cleanup) > 0:
             app.logger.info(f"{len(cleanup)} expired entries found")
             for item in cleanup:
@@ -70,34 +70,30 @@ def cleanup():
 
 scheduler.start()
 
-@app.route('/ks', methods=['POST'])
-def create_kickstart_floppy():
-    schema = KickstartFloppyCreate()
-    if request.is_json:
-        try:
-            body = schema.load(request.get_json())
-        except marshmallow_exceptions.ValidationError as err:
-            return jsonify(err.messages), 400
-        except Exception as e:
-            return jsonify({"error": str(e)}), 400
+@app.post('/ks')
+@app.input(KickstartFloppyIn, location='json')
+@app.output(KickstartFloppyOut, status_code=201)
+def create_kickstart_floppy(json_data):
+    if 'vlanid' in json_data:
+        vlanid = f" --vlanid={json_data['vlanid']}"
     else:
-        return jsonify({"error": "Request must be JSON"}), 400
+        vlanid =""
     kickstart_contents = """vmaccepteula
 rootpw --iscrypted {rootpw}
 install --disk={disk}
-network --bootproto=static --device={device} --ip={ip}  --gateway={gateway} --nameserver={nameserver} --netmask={netmask} --hostname={hostname} --vlanid={vlanid} --addvmportgroup={addvmportgroup}
+network --bootproto=static --device={device} --ip={ip} --gateway={gateway} --nameserver={nameserver} --netmask={netmask} --hostname={hostname} --addvmportgroup={addvmportgroup}{vlanid}
 reboot
 """.format(
-        rootpw=body['rootpw'],
-        disk=body['disk'],
-        device=body['device'],
-        ip=body['ip'],
-        gateway=body['gateway'],
-        nameserver=",".join(str(x) for x in body['nameserver']),
-        netmask=body['netmask'],
-        hostname=body['hostname'],
-        vlanid=body['vlanid'],
-        addvmportgroup=int(body['addvmportgroup'])
+        rootpw=json_data['rootpw'],
+        disk=json_data['disk'],
+        device=json_data['device'],
+        ip=json_data['ip'],
+        gateway=json_data['gateway'],
+        nameserver=",".join(str(x) for x in json_data['nameserver']),
+        netmask=json_data['netmask'],
+        hostname=json_data['hostname'],
+        addvmportgroup=int(json_data['addvmportgroup']),
+        vlanid=vlanid,
     )
     floppy = Floppy()
     floppy.add_file_path('ks.cfg', kickstart_contents.encode('utf-8'))
@@ -105,30 +101,31 @@ reboot
     floppy.save(os.path.join(app.instance_path, image_file))
     current_time = datetime.datetime.now()
     expires_at = current_time + datetime.timedelta(minutes=60)
-    allowed_ip = str(body['allowed_ip'])
-    floppy_data = KickstartFloppy(image_file, allowed_ip, expires_at)
+    allowed_ip = str(json_data['allowed_ip'])
+    floppy_data = KickstartFloppyModel(image_file, allowed_ip, expires_at)
     db.session.add(floppy_data)
     db.session.commit()
     app.logger.info(f"Created {image_file} with access for {allowed_ip}")
-    return jsonify(floppy_data.toJSON()), 201
+    return floppy_data
 
 
-@app.route('/ks/<string:image_file>', methods=['GET'])
+@app.get('/ks/<string:image_file>')
+@app.output(FileSchema, content_type='application/octet-stream', status_code=200)
 def get_kickstart_floppy(image_file):
-    floppy = db.session.execute(db.select(KickstartFloppy).filter_by(image_file=image_file)).scalar_one_or_none()
+    floppy = db.session.execute(db.select(KickstartFloppyModel).filter_by(image_file=image_file)).scalar_one_or_none()
 
     if floppy is None:
-        return jsonify({"error": "File not found"}), 404
+        abort(404, 'File not found')
 
-    if floppy.allowed_ip != request.remote_addr[0]:
-        return jsonify({"error": "Your IP is not permitted to access this resource"}), 401
+    if floppy.allowed_ip != request.remote_addr:
+        abort(401, f'{request.remote_addr} is not permitted to access this resource')
     
     image_path = os.path.join(app.instance_path, image_file)
     if not os.path.exists(image_path):
-        return jsonify({"error": "File not found"}), 404
+        abort(404, 'File not found')
     
     app.logger.info(f"Serving {image_file} for {request.remote_addr[0]}")
-    return send_file("ks/" + image_file)
+    return send_file(image_path)
 
 if __name__ == '__main__':
     app.run()
