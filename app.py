@@ -33,6 +33,10 @@ class KickstartFloppyOut(Schema):
     expires_at = DateTime(required=True)
 
 
+class EsxiIsosOut(Schema):
+    iso_urls = List(String(), required=True, allow_none=True)
+
+
 db = SQLAlchemy()
 app = APIFlask(__name__)
 application = app # for mod_wsgi compatibility
@@ -159,6 +163,26 @@ def get_kickstart_floppy(image_file):
 
     app.logger.info(f"Serving {image_file} for {request.remote_addr[0]}")
     return send_file(image_path)
+
+
+@app.get('/esxi/<string:iso_file>')
+@app.output(FileSchema,
+            content_type='application/octet-stream', status_code=200)
+def get_esxi_iso(iso_file):
+    iso_path = os.path.join(app.instance_path, 'esxi', iso_file)
+    if not os.path.exists(iso_path):
+        abort(404, 'File not found')
+    return send_file(iso_path)
+
+
+@app.get('/esxi')
+@app.output(EsxiIsosOut, status_code=200)
+def get_esxi_isos():
+    iso_path = os.path.join(app.instance_path, 'esxi')
+    if not os.path.exists(iso_path):
+        return {'iso_urls': []}
+    isos = [url_for('get_esxi_iso', iso_file=f, _external=True) for f in os.listdir(iso_path) if f.endswith('.iso')]
+    return {'iso_urls': isos}
 
 
 if __name__ == '__main__':
