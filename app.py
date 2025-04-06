@@ -133,7 +133,7 @@ reboot
         vlanid=vlanid,
     )
     floppy = Floppy()
-    floppy.add_file_path('ks.cfg', kickstart_contents.encode('utf-8'))
+    floppy.add_file_path('ks.cfg', kickstart_contents.encode('ascii'))
     image_file = ''.join(
         random.choices(string.ascii_letters + string.digits, k=8)) + '.img'
     floppy.save(os.path.join(app.instance_path, image_file))
