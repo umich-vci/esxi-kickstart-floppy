@@ -1,15 +1,19 @@
 from flask import request, send_file, url_for
-from apiflask import APIFlask, abort, HTTPTokenAuth, FileSchema, Schema
+from apiflask import APIFlask, abort, HTTPTokenAuth, FileSchema, Schema, EmptySchema
 from flask_apscheduler import APScheduler
 from flask_sqlalchemy import SQLAlchemy
-from apiflask.fields import Integer, String, IPv4, List, Boolean, DateTime
+from apiflask.fields import Integer, String, IPv4, List, Boolean, DateTime, File
 from apiflask.validators import Range
 from makeflop import Floppy
+from io import BytesIO
+from werkzeug.utils import secure_filename
 import string
 import random
 import os
 import secrets
 import datetime
+import pycdlib
+import re
 
 
 class KickstartFloppyIn(Schema):
@@ -32,6 +36,8 @@ class KickstartFloppyOut(Schema):
     allowed_ip = String(required=True)
     expires_at = DateTime(required=True)
 
+class EsxiIsoIn(Schema):
+    file = File(required=True)
 
 class EsxiIsosOut(Schema):
     iso_urls = List(String(), required=True, allow_none=True)
@@ -183,6 +189,31 @@ def get_esxi_isos():
         return {'iso_urls': []}
     isos = [url_for('get_esxi_iso', iso_file=f, _external=True) for f in os.listdir(iso_path) if f.endswith('.iso')]
     return {'iso_urls': isos}
+
+
+@app.post('/esxi')
+@app.auth_required(auth)
+@app.input(EsxiIsoIn, location='files')
+@app.output(EmptySchema,status_code=201)
+def post_esxi_iso(files_data):
+    file = files_data['file']
+    filename = secure_filename(file.filename)
+    iso_path = os.path.join(app.instance_path, 'esxi', filename)
+    file.save(iso_path)
+    iso = pycdlib.PyCdlib()
+    iso.open(filename=iso_path, mode='r+b')
+    boot_cfg = BytesIO()
+    efi_boot_cfg = BytesIO()
+    iso.get_file_from_iso_fp(boot_cfg, iso_path='/BOOT.CFG;1')
+    iso.get_file_from_iso_fp(efi_boot_cfg, iso_path='/EFI/BOOT/BOOT.CFG;1')
+    boot_cfg_str = boot_cfg.getvalue().decode('ascii')
+    boot_cfg_str_edit = re.sub(r'(kernelopt=.*)', 'kernelopt=runweasel ks=usb', boot_cfg_str)
+    efi_boot_cfg_str = efi_boot_cfg.getvalue().decode('ascii')
+    efi_boot_cfg_str_edit = re.sub(r'(kernelopt=.*)', 'kernelopt=runweasel ks=usb', efi_boot_cfg_str)
+    iso.modify_file_in_place(BytesIO(boot_cfg_str_edit.encode()), len(boot_cfg_str_edit), '/BOOT.CFG;1')
+    iso.modify_file_in_place(BytesIO(efi_boot_cfg_str_edit.encode()), len(efi_boot_cfg_str_edit), '/EFI/BOOT/BOOT.CFG;1')
+    iso.close()
+    return
 
 
 if __name__ == '__main__':
