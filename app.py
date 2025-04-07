@@ -4,7 +4,6 @@ from flask_apscheduler import APScheduler
 from flask_sqlalchemy import SQLAlchemy
 from apiflask.fields import Integer, String, IPv4, List, Boolean, DateTime, File
 from apiflask.validators import Range
-from makeflop import Floppy
 from io import BytesIO
 from werkzeug.utils import secure_filename
 import string
@@ -14,6 +13,8 @@ import secrets
 import datetime
 import pycdlib
 import re
+import fs
+import shutil
 
 
 class KickstartFloppyIn(Schema):
@@ -141,11 +142,16 @@ reboot
         addvmportgroup=int(json_data['addvmportgroup']),
         vlanid=vlanid,
     )
-    floppy = Floppy()
-    floppy.add_file_path('ks.cfg', kickstart_contents.encode('ascii'))
+    blank_path = os.path.join(app.root_path, 'blank.img')
     image_file = ''.join(
         random.choices(string.ascii_letters + string.digits, k=8)) + '.img'
-    floppy.save(os.path.join(app.config['KICKSTART_IMAGE_PATH'], image_file))
+    floppy_path = os.path.join(app.config['KICKSTART_IMAGE_PATH'], image_file)
+    shutil.copyfile(blank_path, floppy_path)
+    floppy_fs = fs.open_fs("fat://"+floppy_path+"?offset=512")
+    floppy_fs.create('ks.cfg')
+    floppy_fs.writefile('ks.cfg', BytesIO(kickstart_contents.encode('ascii')))
+    floppy_fs.close()
+
     current_time = datetime.datetime.now()
     expires_at = current_time + datetime.timedelta(minutes=60)
     allowed_ip = str(json_data['allowed_ip'])
