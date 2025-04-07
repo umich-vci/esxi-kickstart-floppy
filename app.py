@@ -49,6 +49,9 @@ application = app # for mod_wsgi compatibility
 DATABASE = 'ks.db'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + DATABASE
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
+app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024 * 1024  # 1GB max-limit
+app.config['ESXI_ISOS_PATH'] = os.path.join(app.instance_path, 'esxi')
+app.config['KICKSTART_IMAGE_PATH'] = os.path.join(app.instance_path, 'ks')
 db.init_app(app)
 auth = HTTPTokenAuth()
 try:
@@ -78,6 +81,12 @@ with app.app_context():
     db.create_all()
 
 
+if not os.path.exists(app.config['KICKSTART_IMAGE_PATH']):
+    os.mkdir(app.config['KICKSTART_IMAGE_PATH'])
+if not os.path.exists(app.config['ESXI_ISOS_PATH']):
+    os.mkdir(app.config['ESXI_ISOS_PATH'])
+
+
 scheduler = APScheduler()
 scheduler.init_app(app)
 
@@ -91,7 +100,7 @@ def cleanup():
             app.logger.info(f"{len(cleanup)} expired entries found")
             for item in cleanup:
                 app.logger.info(f"Deleting expired entry: {item.image_file}")
-                image_path = os.path.join(app.instance_path, item.image_file)
+                image_path = os.path.join(app.config['KICKSTART_IMAGE_PATH'], item.image_file)
                 os.remove(image_path)
                 db.session.delete(item)
             db.session.commit()
@@ -136,7 +145,7 @@ reboot
     floppy.add_file_path('ks.cfg', kickstart_contents.encode('ascii'))
     image_file = ''.join(
         random.choices(string.ascii_letters + string.digits, k=8)) + '.img'
-    floppy.save(os.path.join(app.instance_path, image_file))
+    floppy.save(os.path.join(app.config['KICKSTART_IMAGE_PATH'], image_file))
     current_time = datetime.datetime.now()
     expires_at = current_time + datetime.timedelta(minutes=60)
     allowed_ip = str(json_data['allowed_ip'])
@@ -175,7 +184,7 @@ def get_kickstart_floppy(image_file):
 @app.output(FileSchema,
             content_type='application/octet-stream', status_code=200)
 def get_esxi_iso(iso_file):
-    iso_path = os.path.join(app.instance_path, 'esxi', iso_file)
+    iso_path = os.path.join(app.config['ESXI_ISOS_PATH'], iso_file)
     if not os.path.exists(iso_path):
         abort(404, 'File not found')
     return send_file(iso_path)
@@ -184,7 +193,7 @@ def get_esxi_iso(iso_file):
 @app.get('/esxi')
 @app.output(EsxiIsosOut, status_code=200)
 def get_esxi_isos():
-    iso_path = os.path.join(app.instance_path, 'esxi')
+    iso_path = app.config['ESXI_ISOS_PATH']
     if not os.path.exists(iso_path):
         return {'iso_urls': []}
     isos = [url_for('get_esxi_iso', iso_file=f, _external=True) for f in os.listdir(iso_path) if f.endswith('.iso')]
@@ -198,7 +207,7 @@ def get_esxi_isos():
 def post_esxi_iso(files_data):
     file = files_data['file']
     filename = secure_filename(file.filename)
-    iso_path = os.path.join(app.instance_path, 'esxi', filename)
+    iso_path = os.path.join(app.config['ESXI_ISOS_PATH'], filename)
     file.save(iso_path)
     iso = pycdlib.PyCdlib()
     iso.open(filename=iso_path, mode='r+b')
