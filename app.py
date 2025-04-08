@@ -178,7 +178,7 @@ def get_kickstart_floppy(image_file):
     if floppy.allowed_ip != request.remote_addr:
         abort(401, f'{request.remote_addr} is not permitted')
 
-    image_path = os.path.join(app.instance_path, image_file)
+    image_path = os.path.join(app.config['KICKSTART_IMAGE_PATH'], image_file)
     if not os.path.exists(image_path):
         abort(404, 'File not found')
 
