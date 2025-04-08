@@ -130,6 +130,14 @@ rootpw --iscrypted {rootpw}
 install --disk={disk} --preservevmfs
 network --bootproto=static --device={device} --ip={ip} --gateway={gateway} --nameserver={nameserver} --netmask={netmask} --hostname={hostname} --addvmportgroup={addvmportgroup}{vlanid}
 reboot
+
+%post --interpreter=busybox --ignorefailure=true
+# check if the ilo tools are installed
+# if they are, then assume the floppy is mounted via ilo
+if [ -f /opt/ilorest/bin/ilorest.sh ]; then
+  # eject the virtual floppy from the iLO
+  /opt/ilorest/bin/ilorest.sh virtualmedia 1 --remove
+fi
 """.format(
         rootpw=json_data['rootpw'],
         disk=json_data['disk'],
