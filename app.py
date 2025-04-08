@@ -127,7 +127,7 @@ def create_kickstart_floppy(json_data):
         vlanid = ""
     kickstart_contents = """vmaccepteula
 rootpw --iscrypted {rootpw}
-install --disk={disk}
+install --disk={disk} --preservevmfs
 network --bootproto=static --device={device} --ip={ip} --gateway={gateway} --nameserver={nameserver} --netmask={netmask} --hostname={hostname} --addvmportgroup={addvmportgroup}{vlanid}
 reboot
 """.format(
