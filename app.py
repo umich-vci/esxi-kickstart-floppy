@@ -176,9 +176,10 @@ fi
 @app.output(FileSchema,
             content_type='application/octet-stream', status_code=200)
 def get_kickstart_floppy(image_file):
+    filename = secure_filename(image_file)
     floppy = db.session.execute(
         db.select(KickstartFloppyModel).filter_by(
-            image_file=image_file)).scalar_one_or_none()
+            image_file=filename)).scalar_one_or_none()
 
     if floppy is None:
         abort(404, 'File not found')
@@ -186,11 +187,11 @@ def get_kickstart_floppy(image_file):
     if floppy.allowed_ip != request.remote_addr:
         abort(401, f'{request.remote_addr} is not permitted')
 
-    image_path = os.path.join(app.config['KICKSTART_IMAGE_PATH'], image_file)
+    image_path = os.path.join(app.config['KICKSTART_IMAGE_PATH'], filename)
     if not os.path.exists(image_path):
         abort(404, 'File not found')
 
-    app.logger.info(f"Serving {image_file} for {request.remote_addr[0]}")
+    app.logger.info(f"Serving {filename} for {request.remote_addr[0]}")
     return send_file(image_path)
 
 
@@ -198,7 +199,8 @@ def get_kickstart_floppy(image_file):
 @app.output(FileSchema,
             content_type='application/octet-stream', status_code=200)
 def get_esxi_iso(iso_file):
-    iso_path = os.path.join(app.config['ESXI_ISOS_PATH'], iso_file)
+    filename = secure_filename(iso_file)
+    iso_path = os.path.join(app.config['ESXI_ISOS_PATH'], filename)
     if not os.path.exists(iso_path):
         abort(404, 'File not found')
     return send_file(iso_path)
@@ -206,7 +208,8 @@ def get_esxi_iso(iso_file):
 @app.delete('/esxi/<string:iso_file>')
 @app.auth_required(auth)
 def delete_esxi_iso(iso_file):
-    iso_path = os.path.join(app.config['ESXI_ISOS_PATH'], iso_file)
+    filename = secure_filename(iso_file)
+    iso_path = os.path.join(app.config['ESXI_ISOS_PATH'], filename)
     if not os.path.exists(iso_path):
         abort(404, 'File not found')
     os.remove(iso_path)
