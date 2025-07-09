@@ -207,13 +207,14 @@ def get_esxi_iso(iso_file):
 
 @app.delete('/esxi/<string:iso_file>')
 @app.auth_required(auth)
+@app.output({}, status_code=204)
 def delete_esxi_iso(iso_file):
     filename = secure_filename(iso_file)
     iso_path = os.path.join(app.config['ESXI_ISOS_PATH'], filename)
     if not os.path.exists(iso_path):
         abort(404, 'File not found')
     os.remove(iso_path)
-    return '', 204
+    return ''
 
 @app.get('/esxi')
 @app.output(EsxiIsosOut, status_code=200)
