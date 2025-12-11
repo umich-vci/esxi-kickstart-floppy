@@ -1,5 +1,7 @@
+#!/usr/bin/env python3
+
 from flask import request, send_file, url_for
-from apiflask import APIFlask, abort, HTTPTokenAuth, FileSchema, Schema, EmptySchema
+from apiflask import APIFlask, abort, APIKeyHeaderAuth, FileSchema, Schema, EmptySchema
 from flask_apscheduler import APScheduler
 from flask_sqlalchemy import SQLAlchemy
 from apiflask.fields import Integer, String, IPv4, List, Boolean, DateTime, File
@@ -54,7 +56,7 @@ app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024 * 1024  # 1GB max-limit
 app.config['ESXI_ISOS_PATH'] = os.path.join(app.instance_path, 'esxi')
 app.config['KICKSTART_IMAGE_PATH'] = os.path.join(app.instance_path, 'ks')
 db.init_app(app)
-auth = HTTPTokenAuth()
+auth = APIKeyHeaderAuth()
 try:
     app.config.from_pyfile(os.path.join(app.instance_path, 'tokens.py'))
 except FileNotFoundError:
