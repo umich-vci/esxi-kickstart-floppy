@@ -153,8 +153,7 @@ fi
         vlanid=vlanid,
     )
     blank_path = os.path.join(app.root_path, 'blank.img')
-    image_file = ''.join(
-        random.choices(string.ascii_letters + string.digits, k=8)) + '.img'
+    image_file = secrets.token_urlsafe(8) + '.img'
     floppy_path = os.path.join(app.config['KICKSTART_IMAGE_PATH'], image_file)
     shutil.copyfile(blank_path, floppy_path)
     floppy_fs = fs.open_fs("fat://"+floppy_path+"?offset=512")
