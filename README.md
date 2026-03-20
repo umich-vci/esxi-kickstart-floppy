@@ -54,11 +54,18 @@ Uploaded ISOs can be listed via `GET /esxi`, uploaded via `POST /esxi`, and dele
 `DELETE /esxi/<filename>`. Individual ISO files are served directly by the web server from the
 `instance/esxi/` directory — the application itself does not handle ISO download requests.
 
-The `GET /esxi` listing returns download URLs pointing at the web server's static path. This
-base URL defaults to `esxi-static` relative to the application root and can be overridden by
-setting `ESXI_STATIC_URL` in `instance/tokens.py` (or any other Flask instance config file):
+The `GET /esxi` listing returns download URLs pointing at the web server's static path. The
+base URL is constructed from two config values set in `instance/tokens.py` (or any other Flask
+instance config file):
+
+- `BASE_URL` — the scheme and host used to build ISO download URLs (e.g. `https://your-server`).
+  **This should always be set in production** to prevent Host header injection. If not set, the
+  application falls back to the incoming request's `Host` header, which is not safe for production
+  use.
+- `ESXI_STATIC_URL` — the static path segment appended to `BASE_URL`. Defaults to `esxi-static`.
 
 ```python
+BASE_URL = 'https://your-server'
 ESXI_STATIC_URL = 'esxi-static'
 ```
 
