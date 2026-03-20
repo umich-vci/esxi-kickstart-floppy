@@ -34,7 +34,7 @@ class KickstartFloppyIn(Schema):
     vlanid = Integer(required=False, validate=Range(min=1, max=4094))
     addvmportgroup = Boolean(required=False, load_default=True)
     allowed_ip = IPv4(required=True)
-    timeout_minutes = Integer(required=False, load_default=60, validate=Range(min=1))
+    timeout_minutes = Integer(required=False, load_default=60, validate=Range(min=1, max=1440))
 
     @validates_schema
     def validate_disk_options(self, data, **kwargs):
