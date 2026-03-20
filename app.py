@@ -5,7 +5,7 @@ from apiflask import APIFlask, abort, APIKeyHeaderAuth, FileSchema, Schema, Empt
 from flask_apscheduler import APScheduler
 from flask_sqlalchemy import SQLAlchemy
 from apiflask.fields import Integer, String, IPv4, List, Boolean, DateTime, File
-from apiflask.validators import Range
+from apiflask.validators import Range, Regexp
 from io import BytesIO
 from werkzeug.utils import secure_filename
 import os
@@ -17,11 +17,14 @@ import fs
 import shutil
 
 
+# Reject newlines and other control characters to prevent kickstart directive injection
+_NO_NEWLINE = Regexp(r'^[^\r\n\x00-\x1f\x7f]+$', error='Field must not contain newlines or control characters')
+
 class KickstartFloppyIn(Schema):
-    hostname = String(required=True)
-    rootpw = String(required=True)
-    disk = String(required=True)
-    device = String(required=False, load_default='vmnic0')
+    hostname = String(required=True, validate=_NO_NEWLINE)
+    rootpw = String(required=True, validate=_NO_NEWLINE)
+    disk = String(required=True, validate=_NO_NEWLINE)
+    device = String(required=False, load_default='vmnic0', validate=_NO_NEWLINE)
     ip = IPv4(required=True)
     netmask = IPv4(required=True)
     gateway = IPv4(required=True)
@@ -59,8 +62,9 @@ try:
     app.config.from_pyfile(os.path.join(app.instance_path, 'tokens.py'))
 except FileNotFoundError:
     app.logger.warning("tokens.py not found, generating default token")
-    app.config['TOKENS'] = {secrets.token_urlsafe(): 'default'}
-    print(app.config['TOKENS'])
+    default_token = secrets.token_urlsafe()
+    app.config['TOKENS'] = {default_token: 'default'}
+    app.logger.warning(f"Generated default token: {default_token}")
 tokens = app.config['TOKENS']
 
 
@@ -190,7 +194,7 @@ def get_kickstart_floppy(image_file):
     if not os.path.exists(image_path):
         abort(404, 'File not found')
 
-    app.logger.info(f"Serving {filename} for {request.remote_addr[0]}")
+    app.logger.info(f"Serving {filename} for {request.remote_addr}")
     return send_file(image_path)
 
 
