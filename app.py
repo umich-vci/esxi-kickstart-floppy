@@ -5,11 +5,10 @@ from apiflask import APIFlask, abort, APIKeyHeaderAuth, FileSchema, Schema, Empt
 from flask_apscheduler import APScheduler
 from flask_sqlalchemy import SQLAlchemy
 from apiflask.fields import Integer, String, IPv4, List, Boolean, DateTime, File
-from apiflask.validators import Range
+from apiflask.validators import Range, Regexp
+from marshmallow import validates_schema, ValidationError
 from io import BytesIO
 from werkzeug.utils import secure_filename
-import string
-import random
 import os
 import secrets
 import datetime
@@ -19,11 +18,15 @@ import fs
 import shutil
 
 
+# Reject newlines and other control characters to prevent kickstart directive injection
+_NO_NEWLINE = Regexp(r'^[^\r\n\x00-\x1f\x7f]+$', error='Field must not contain newlines or control characters')
+
 class KickstartFloppyIn(Schema):
-    hostname = String(required=True)
-    rootpw = String(required=True)
-    disk = String(required=True)
-    device = String(required=False, load_default='vmnic0')
+    hostname = String(required=True, validate=_NO_NEWLINE)
+    rootpw = String(required=True, validate=_NO_NEWLINE)
+    disk = String(required=False, validate=_NO_NEWLINE)
+    firstdisk = String(required=False, validate=_NO_NEWLINE)
+    device = String(required=False, load_default='vmnic0', validate=_NO_NEWLINE)
     ip = IPv4(required=True)
     netmask = IPv4(required=True)
     gateway = IPv4(required=True)
@@ -31,6 +34,16 @@ class KickstartFloppyIn(Schema):
     vlanid = Integer(required=False, validate=Range(min=1, max=4094))
     addvmportgroup = Boolean(required=False, load_default=True)
     allowed_ip = IPv4(required=True)
+    timeout_minutes = Integer(required=False, load_default=60, validate=Range(min=1, max=1440))
+
+    @validates_schema
+    def validate_disk_options(self, data, **kwargs):
+        has_disk = 'disk' in data
+        has_firstdisk = 'firstdisk' in data
+        if not has_disk and not has_firstdisk:
+            raise ValidationError('One of "disk" or "firstdisk" must be provided.')
+        if has_disk and has_firstdisk:
+            raise ValidationError('Only one of "disk" or "firstdisk" may be provided.')
 
 
 class KickstartFloppyOut(Schema):
@@ -56,13 +69,15 @@ app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024 * 1024  # 1GB max-limit
 app.config['ESXI_ISOS_PATH'] = os.path.join(app.instance_path, 'esxi')
 app.config['KICKSTART_IMAGE_PATH'] = os.path.join(app.instance_path, 'ks')
 db.init_app(app)
+app.config['USE_X_SENDFILE'] = True
 auth = APIKeyHeaderAuth()
 try:
     app.config.from_pyfile(os.path.join(app.instance_path, 'tokens.py'))
 except FileNotFoundError:
     app.logger.warning("tokens.py not found, generating default token")
-    app.config['TOKENS'] = {secrets.token_urlsafe(): 'default'}
-    print(app.config['TOKENS'])
+    default_token = secrets.token_urlsafe()
+    app.config['TOKENS'] = {default_token: 'default'}
+    app.logger.warning(f"Generated default token: {default_token}")
 tokens = app.config['TOKENS']
 
 
@@ -127,9 +142,13 @@ def create_kickstart_floppy(json_data):
         vlanid = f" --vlanid={json_data['vlanid']}"
     else:
         vlanid = ""
+    if 'disk' in json_data:
+        disk_option = f"--disk={json_data['disk']}"
+    else:
+        disk_option = f"--firstdisk={json_data['firstdisk']}"
     kickstart_contents = """vmaccepteula
 rootpw --iscrypted {rootpw}
-install --disk={disk} --preservevmfs
+install {disk_option} --preservevmfs
 network --bootproto=static --device={device} --ip={ip} --gateway={gateway} --nameserver={nameserver} --netmask={netmask} --hostname={hostname} --addvmportgroup={addvmportgroup}{vlanid}
 reboot
 
@@ -142,7 +161,7 @@ if [ -f /opt/ilorest/bin/ilorest.sh ]; then
 fi
 """.format(
         rootpw=json_data['rootpw'],
-        disk=json_data['disk'],
+        disk_option=disk_option,
         device=json_data['device'],
         ip=json_data['ip'],
         gateway=json_data['gateway'],
@@ -153,8 +172,7 @@ fi
         vlanid=vlanid,
     )
     blank_path = os.path.join(app.root_path, 'blank.img')
-    image_file = ''.join(
-        random.choices(string.ascii_letters + string.digits, k=8)) + '.img'
+    image_file = secrets.token_urlsafe(6) + '.img'
     floppy_path = os.path.join(app.config['KICKSTART_IMAGE_PATH'], image_file)
     shutil.copyfile(blank_path, floppy_path)
     floppy_fs = fs.open_fs("fat://"+floppy_path+"?offset=512")
@@ -163,7 +181,7 @@ fi
     floppy_fs.close()
 
     current_time = datetime.datetime.now()
-    expires_at = current_time + datetime.timedelta(minutes=60)
+    expires_at = current_time + datetime.timedelta(minutes=json_data['timeout_minutes'])
     allowed_ip = str(json_data['allowed_ip'])
     image_url = url_for('get_kickstart_floppy', image_file=image_file,
                         _external=True)
@@ -193,7 +211,7 @@ def get_kickstart_floppy(image_file):
     if not os.path.exists(image_path):
         abort(404, 'File not found')
 
-    app.logger.info(f"Serving {filename} for {request.remote_addr[0]}")
+    app.logger.info(f"Serving {filename} for {request.remote_addr}")
     return send_file(image_path)
 
 
