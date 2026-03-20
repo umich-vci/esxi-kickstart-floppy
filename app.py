@@ -34,6 +34,7 @@ class KickstartFloppyIn(Schema):
     vlanid = Integer(required=False, validate=Range(min=1, max=4094))
     addvmportgroup = Boolean(required=False, load_default=True)
     allowed_ip = IPv4(required=True)
+    timeout_minutes = Integer(required=False, load_default=60, validate=Range(min=1))
 
     @validates_schema
     def validate_disk_options(self, data, **kwargs):
@@ -179,7 +180,7 @@ fi
     floppy_fs.close()
 
     current_time = datetime.datetime.now()
-    expires_at = current_time + datetime.timedelta(minutes=60)
+    expires_at = current_time + datetime.timedelta(minutes=json_data['timeout_minutes'])
     allowed_ip = str(json_data['allowed_ip'])
     image_url = url_for('get_kickstart_floppy', image_file=image_file,
                         _external=True)
