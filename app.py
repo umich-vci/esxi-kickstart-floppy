@@ -6,6 +6,7 @@ from flask_apscheduler import APScheduler
 from flask_sqlalchemy import SQLAlchemy
 from apiflask.fields import Integer, String, IPv4, List, Boolean, DateTime, File
 from apiflask.validators import Range, Regexp
+from marshmallow import validates_schema, ValidationError
 from io import BytesIO
 from werkzeug.utils import secure_filename
 import os
@@ -23,7 +24,8 @@ _NO_NEWLINE = Regexp(r'^[^\r\n\x00-\x1f\x7f]+$', error='Field must not contain n
 class KickstartFloppyIn(Schema):
     hostname = String(required=True, validate=_NO_NEWLINE)
     rootpw = String(required=True, validate=_NO_NEWLINE)
-    disk = String(required=True, validate=_NO_NEWLINE)
+    disk = String(required=False, validate=_NO_NEWLINE)
+    firstdisk = String(required=False, validate=_NO_NEWLINE)
     device = String(required=False, load_default='vmnic0', validate=_NO_NEWLINE)
     ip = IPv4(required=True)
     netmask = IPv4(required=True)
@@ -32,6 +34,15 @@ class KickstartFloppyIn(Schema):
     vlanid = Integer(required=False, validate=Range(min=1, max=4094))
     addvmportgroup = Boolean(required=False, load_default=True)
     allowed_ip = IPv4(required=True)
+
+    @validates_schema
+    def validate_disk_options(self, data, **kwargs):
+        has_disk = 'disk' in data
+        has_firstdisk = 'firstdisk' in data
+        if not has_disk and not has_firstdisk:
+            raise ValidationError('One of "disk" or "firstdisk" must be provided.')
+        if has_disk and has_firstdisk:
+            raise ValidationError('Only one of "disk" or "firstdisk" may be provided.')
 
 
 class KickstartFloppyOut(Schema):
@@ -129,9 +140,13 @@ def create_kickstart_floppy(json_data):
         vlanid = f" --vlanid={json_data['vlanid']}"
     else:
         vlanid = ""
+    if 'disk' in json_data:
+        disk_option = f"--disk={json_data['disk']}"
+    else:
+        disk_option = f"--firstdisk={json_data['firstdisk']}"
     kickstart_contents = """vmaccepteula
 rootpw --iscrypted {rootpw}
-install --disk={disk} --preservevmfs
+install {disk_option} --preservevmfs
 network --bootproto=static --device={device} --ip={ip} --gateway={gateway} --nameserver={nameserver} --netmask={netmask} --hostname={hostname} --addvmportgroup={addvmportgroup}{vlanid}
 reboot
 
@@ -144,7 +159,7 @@ if [ -f /opt/ilorest/bin/ilorest.sh ]; then
 fi
 """.format(
         rootpw=json_data['rootpw'],
-        disk=json_data['disk'],
+        disk_option=disk_option,
         device=json_data['device'],
         ip=json_data['ip'],
         gateway=json_data['gateway'],
