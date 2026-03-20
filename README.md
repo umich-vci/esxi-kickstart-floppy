@@ -55,10 +55,11 @@ deleted via `DELETE /esxi/<filename>`.
 
 ## X-Sendfile
 
-The application has `USE_X_SENDFILE` enabled, which instructs Flask to delegate actual file
-transfer to the web server via the `X-Sendfile` header rather than streaming the file through
-Python. This is especially important for large ESXi ISO files, where serving through Python
-would be significantly less efficient.
+The application has `USE_X_SENDFILE` enabled, which, when supported by the fronting WSGI/web
+server, instructs Flask to delegate actual file transfer via the `X-Sendfile` header rather than
+streaming the file through Python. If X-Sendfile is not supported, Flask will fall back to
+streaming the file from Python. Delegating file transfer is especially important for large ESXi
+ISO files, where serving through Python would be significantly less efficient.
 
 ## API Tokens
 
