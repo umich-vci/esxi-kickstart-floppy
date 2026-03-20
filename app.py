@@ -13,6 +13,7 @@ import os
 import secrets
 import datetime
 import pycdlib
+from pycdlib.pycdlibexception import PyCdlibException
 import re
 import fs
 import shutil
@@ -222,8 +223,8 @@ def get_esxi_isos():
     if not os.path.exists(iso_path):
         return {'iso_urls': []}
     # Use a configured BASE_URL to avoid Host header injection. Falls back to
-    # request.url_root only if BASE_URL is not set (not recommended for production).
-    base_url = app.config.get('BASE_URL', request.url_root)
+    # request.url_root only if BASE_URL is unset or blank (not recommended for production).
+    base_url = app.config.get('BASE_URL') or request.url_root
     static_base = base_url.rstrip('/') + '/' + app.config['ESXI_STATIC_URL'].strip('/') + '/'
     isos = [static_base + f for f in os.listdir(iso_path) if f.endswith('.iso')]
     return {'iso_urls': isos}
@@ -249,29 +250,40 @@ def delete_esxi_iso(iso_file):
 @app.output(EmptySchema,status_code=201)
 def post_esxi_iso(files_data):
     file = files_data['file']
-    filename = secure_filename(file.filename)
+    filename = secure_filename(file.filename or '')
     if not filename:
         abort(400, 'Invalid filename')
     iso_path = os.path.join(app.config['ESXI_ISOS_PATH'], filename)
     file.save(iso_path)
     iso = pycdlib.PyCdlib()
+    iso_opened = False
     try:
-        iso.open(filename=iso_path, mode='r+b')
-        boot_cfg = BytesIO()
-        efi_boot_cfg = BytesIO()
-        iso.get_file_from_iso_fp(boot_cfg, iso_path='/BOOT.CFG;1')
-        iso.get_file_from_iso_fp(efi_boot_cfg, iso_path='/EFI/BOOT/BOOT.CFG;1')
-        boot_cfg_str = boot_cfg.getvalue().decode('ascii')
-        boot_cfg_str_edit = re.sub(r'(kernelopt=.*)', 'kernelopt=runweasel ks=usb', boot_cfg_str)
-        efi_boot_cfg_str = efi_boot_cfg.getvalue().decode('ascii')
-        efi_boot_cfg_str_edit = re.sub(r'(kernelopt=.*)', 'kernelopt=runweasel ks=usb', efi_boot_cfg_str)
-        iso.modify_file_in_place(BytesIO(boot_cfg_str_edit.encode()), len(boot_cfg_str_edit), '/BOOT.CFG;1')
-        iso.modify_file_in_place(BytesIO(efi_boot_cfg_str_edit.encode()), len(efi_boot_cfg_str_edit), '/EFI/BOOT/BOOT.CFG;1')
-        iso.close()
-    except Exception:
+        try:
+            iso.open(filename=iso_path, mode='r+b')
+            iso_opened = True
+            boot_cfg = BytesIO()
+            efi_boot_cfg = BytesIO()
+            iso.get_file_from_iso_fp(boot_cfg, iso_path='/BOOT.CFG;1')
+            iso.get_file_from_iso_fp(efi_boot_cfg, iso_path='/EFI/BOOT/BOOT.CFG;1')
+            boot_cfg_str = boot_cfg.getvalue().decode('ascii')
+            boot_cfg_str_edit = re.sub(r'(kernelopt=.*)', 'kernelopt=runweasel ks=usb', boot_cfg_str)
+            efi_boot_cfg_str = efi_boot_cfg.getvalue().decode('ascii')
+            efi_boot_cfg_str_edit = re.sub(r'(kernelopt=.*)', 'kernelopt=runweasel ks=usb', efi_boot_cfg_str)
+            iso.modify_file_in_place(BytesIO(boot_cfg_str_edit.encode()), len(boot_cfg_str_edit), '/BOOT.CFG;1')
+            iso.modify_file_in_place(BytesIO(efi_boot_cfg_str_edit.encode()), len(efi_boot_cfg_str_edit), '/EFI/BOOT/BOOT.CFG;1')
+        finally:
+            if iso_opened:
+                iso.close()
+    except (PyCdlibException, UnicodeDecodeError) as e:
+        app.logger.warning(f"Invalid ISO rejected: {e}")
         if os.path.exists(iso_path):
             os.remove(iso_path)
         abort(400, 'Invalid or unsupported ISO file')
+    except Exception:
+        app.logger.exception("Unexpected error processing ISO upload")
+        if os.path.exists(iso_path):
+            os.remove(iso_path)
+        raise
     return
 
 
