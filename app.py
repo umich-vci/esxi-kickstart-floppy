@@ -69,6 +69,7 @@ app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024 * 1024  # 1GB max-limit
 app.config['ESXI_ISOS_PATH'] = os.path.join(app.instance_path, 'esxi')
 app.config['KICKSTART_IMAGE_PATH'] = os.path.join(app.instance_path, 'ks')
 db.init_app(app)
+app.config['USE_X_SENDFILE'] = True
 auth = APIKeyHeaderAuth()
 try:
     app.config.from_pyfile(os.path.join(app.instance_path, 'tokens.py'))
