@@ -33,8 +33,8 @@ on first run:
 ## ESXi ISO Upload and Serving
 
 The application can host ESXi installer ISO images and serve them for virtual media boot.
-When an ISO is uploaded via `POST /esxi`, the application automatically modifies two files
-inside the ISO before saving it:
+When an ISO is uploaded via `POST /esxi`, the application saves it and then automatically updates
+two files inside the ISO on disk:
 
 - `/BOOT.CFG` — used for BIOS/legacy boot
 - `/EFI/BOOT/BOOT.CFG` — used for UEFI boot
