@@ -68,8 +68,8 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
 app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024 * 1024  # 1GB max-limit
 app.config['ESXI_ISOS_PATH'] = os.path.join(app.instance_path, 'esxi')
 app.config['KICKSTART_IMAGE_PATH'] = os.path.join(app.instance_path, 'ks')
+app.config['ESXI_STATIC_URL'] = 'esxi-static'
 db.init_app(app)
-app.config['USE_X_SENDFILE'] = True
 auth = APIKeyHeaderAuth()
 try:
     app.config.from_pyfile(os.path.join(app.instance_path, 'tokens.py'))
@@ -215,15 +215,16 @@ def get_kickstart_floppy(image_file):
     return send_file(image_path)
 
 
-@app.get('/esxi/<string:iso_file>')
-@app.output(FileSchema,
-            content_type='application/octet-stream', status_code=200)
-def get_esxi_iso(iso_file):
-    filename = secure_filename(iso_file)
-    iso_path = os.path.join(app.config['ESXI_ISOS_PATH'], filename)
+@app.get('/esxi')
+@app.output(EsxiIsosOut, status_code=200)
+def get_esxi_isos():
+    iso_path = app.config['ESXI_ISOS_PATH']
     if not os.path.exists(iso_path):
-        abort(404, 'File not found')
-    return send_file(iso_path)
+        return {'iso_urls': []}
+    static_base = request.url_root + app.config['ESXI_STATIC_URL'].strip('/') + '/'
+    isos = [static_base + f for f in os.listdir(iso_path) if f.endswith('.iso')]
+    return {'iso_urls': isos}
+
 
 @app.delete('/esxi/<string:iso_file>')
 @app.auth_required(auth)
@@ -235,15 +236,6 @@ def delete_esxi_iso(iso_file):
         abort(404, 'File not found')
     os.remove(iso_path)
     return ''
-
-@app.get('/esxi')
-@app.output(EsxiIsosOut, status_code=200)
-def get_esxi_isos():
-    iso_path = app.config['ESXI_ISOS_PATH']
-    if not os.path.exists(iso_path):
-        return {'iso_urls': []}
-    isos = [url_for('get_esxi_iso', iso_file=f, _external=True) for f in os.listdir(iso_path) if f.endswith('.iso')]
-    return {'iso_urls': isos}
 
 
 @app.post('/esxi')
