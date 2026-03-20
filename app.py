@@ -60,7 +60,7 @@ class EsxiIsosOut(Schema):
 
 
 db = SQLAlchemy()
-app = APIFlask(__name__)
+app = APIFlask(__name__, title='ESXi Kickstart Floppy API')
 application = app # for mod_wsgi compatibility
 DATABASE = 'ks.db'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + DATABASE
