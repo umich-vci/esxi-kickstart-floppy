@@ -6,6 +6,7 @@ import os
 import re
 import secrets
 import shutil
+import warnings
 from io import BytesIO
 
 import fs
@@ -197,7 +198,10 @@ def create_kickstart_floppy(json_data):  # pylint: disable=too-many-locals
     image_file = secrets.token_urlsafe(6) + '.img'
     floppy_path = os.path.join(app.config['KICKSTART_IMAGE_PATH'], image_file)
     shutil.copyfile(blank_path, floppy_path)
-    floppy_fs = fs.open_fs("fat://" + floppy_path + "?offset=512")
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', message='Unable to reliably determine FAT type',
+                                category=UserWarning, module='pyfatfs')
+        floppy_fs = fs.open_fs("fat://" + floppy_path + "?offset=512")
     floppy_fs.create('ks.cfg')
     floppy_fs.writefile('ks.cfg', BytesIO(kickstart_contents.encode('ascii')))
     floppy_fs.close()
