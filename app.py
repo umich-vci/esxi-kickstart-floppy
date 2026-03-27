@@ -22,16 +22,25 @@ from pycdlib.pycdlibexception import PyCdlibException
 from werkzeug.utils import secure_filename
 
 
-# Applied to every field interpolated into a kickstart directive.
-# Blocks whitespace (prevents same-line flag injection such as "sda --overwritevmfs"),
-# leading dashes (prevents values that look like flags), and control characters
-# (prevents non-printable byte smuggling).
-# All affected fields -- disk identifiers, firstdisk filters, rootpw hashes,
-# vmnic/MAC device names, and hostnames -- are single tokens that never require
-# whitespace or a leading dash.
+# Validator for fields interpolated into kickstart directives.
+# Blocks whitespace (same-line flag injection), leading dashes (flag-lookalike values),
+# and control characters (non-printable byte smuggling).
 _SAFE_TOKEN = Regexp(
     r'^(?!-)[^\r\n\x00-\x1f\x7f\s]+$',
     error='Field must not start with a dash, contain whitespace, or contain control characters'
+)
+
+# Variant for the firstdisk field, which allows internal spaces for model names
+# (e.g. "Dell BOSS-N1"). Values with spaces are double-quoted in the generated
+# install/clearpart lines. Leading/trailing spaces and leading dashes are rejected
+# as they are never valid and would break quoting or look like flags. Double quotes,
+# backslashes, and non-printable/non-ASCII characters are blocked because the file
+# is ASCII-encoded and the quoting is unescaped.
+_FIRSTDISK_VALUE = Regexp(
+    r'^(?![ -])(?!.*["\\])[\x20-\x7e]+(?<!\s)$',
+    error='Field must not start or end with a space, start with a dash, contain '
+          'non-printable or non-ASCII characters, or contain double quotes or '
+          'backslashes'
 )
 
 class KickstartFloppyIn(Schema):
@@ -40,7 +49,7 @@ class KickstartFloppyIn(Schema):
     hostname = String(required=True, validate=_SAFE_TOKEN)
     rootpw = String(required=True, validate=_SAFE_TOKEN)
     disk = String(required=False, validate=_SAFE_TOKEN)
-    firstdisk = String(required=False, validate=_SAFE_TOKEN)
+    firstdisk = String(required=False, validate=_FIRSTDISK_VALUE)
     device = String(required=False, load_default='vmnic0', validate=_SAFE_TOKEN)
     ip = IPv4(required=True)
     netmask = IPv4(required=True)
@@ -187,12 +196,14 @@ def create_kickstart_floppy(json_data):  # pylint: disable=too-many-locals
     if 'disk' in json_data:
         disk_option = f"--disk={json_data['disk']}"
     else:
-        disk_option = f"--firstdisk={json_data['firstdisk']}"
+        firstdisk_val = json_data['firstdisk']
+        firstdisk_quoted = f'"{firstdisk_val}"' if ' ' in firstdisk_val else firstdisk_val
+        disk_option = f"--firstdisk={firstdisk_quoted}"
     if json_data['clearpart']:
         if 'disk' in json_data:
             clearpart_line = f"clearpart --drives={json_data['disk']}"
         else:
-            clearpart_line = f"clearpart --firstdisk={json_data['firstdisk']}"
+            clearpart_line = f"clearpart --firstdisk={firstdisk_quoted}"
         if json_data['clearpart_overwritevmfs']:
             clearpart_line += " --overwritevmfs"
         clearpart_line += "\n"
