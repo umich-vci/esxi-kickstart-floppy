@@ -38,8 +38,9 @@ _SAFE_TOKEN = Regexp(
 # is ASCII-encoded and the quoting is unescaped.
 _FIRSTDISK_VALUE = Regexp(
     r'^(?![ -])(?!.*["\\])[\x20-\x7e]+(?<!\s)$',
-    error='Field must not start with a dash or space, contain non-printable or '
-          'non-ASCII characters, or contain quotes or backslashes'
+    error='Field must not start or end with a space, start with a dash, contain '
+          'non-printable or non-ASCII characters, or contain double quotes or '
+          'backslashes'
 )
 
 class KickstartFloppyIn(Schema):
