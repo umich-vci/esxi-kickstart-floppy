@@ -22,26 +22,34 @@ from pycdlib.pycdlibexception import PyCdlibException
 from werkzeug.utils import secure_filename
 
 
-# Reject newlines and other control characters to prevent kickstart directive injection
-_NO_NEWLINE = Regexp(
-    r'^[^\r\n\x00-\x1f\x7f]+$',
-    error='Field must not contain newlines or control characters'
+# Applied to every field interpolated into a kickstart directive.
+# Blocks whitespace (prevents same-line flag injection such as "sda --overwritevmfs"),
+# leading dashes (prevents values that look like flags), and control characters
+# (prevents non-printable byte smuggling).
+# All affected fields -- disk identifiers, firstdisk filters, rootpw hashes,
+# vmnic/MAC device names, and hostnames -- are single tokens that never require
+# whitespace or a leading dash.
+_SAFE_TOKEN = Regexp(
+    r'^(?!-)[^\r\n\x00-\x1f\x7f\s]+$',
+    error='Field must not start with a dash, contain whitespace, or contain control characters'
 )
 
 class KickstartFloppyIn(Schema):
     """Input schema for creating a kickstart floppy image."""
 
-    hostname = String(required=True, validate=_NO_NEWLINE)
-    rootpw = String(required=True, validate=_NO_NEWLINE)
-    disk = String(required=False, validate=_NO_NEWLINE)
-    firstdisk = String(required=False, validate=_NO_NEWLINE)
-    device = String(required=False, load_default='vmnic0', validate=_NO_NEWLINE)
+    hostname = String(required=True, validate=_SAFE_TOKEN)
+    rootpw = String(required=True, validate=_SAFE_TOKEN)
+    disk = String(required=False, validate=_SAFE_TOKEN)
+    firstdisk = String(required=False, validate=_SAFE_TOKEN)
+    device = String(required=False, load_default='vmnic0', validate=_SAFE_TOKEN)
     ip = IPv4(required=True)
     netmask = IPv4(required=True)
     gateway = IPv4(required=True)
     nameserver = List(IPv4(), required=True)
     vlanid = Integer(required=False, validate=Range(min=1, max=4094))
     addvmportgroup = Boolean(required=False, load_default=True)
+    clearpart = Boolean(required=False, load_default=False)
+    clearpart_overwritevmfs = Boolean(required=False, load_default=False)
     allowed_ip = IPv4(required=True)
     timeout_minutes = Integer(required=False, load_default=60, validate=Range(min=1, max=1440))
 
@@ -54,6 +62,12 @@ class KickstartFloppyIn(Schema):
             raise ValidationError('One of "disk" or "firstdisk" must be provided.')
         if has_disk and has_firstdisk:
             raise ValidationError('Only one of "disk" or "firstdisk" may be provided.')
+
+    @validates_schema
+    def validate_clearpart_options(self, data, **_):
+        """Ensure clearpart_overwritevmfs is not set without clearpart."""
+        if data.get('clearpart_overwritevmfs') and not data.get('clearpart'):
+            raise ValidationError('"clearpart_overwritevmfs" requires "clearpart" to be true.')
 
 
 class KickstartFloppyOut(Schema):
@@ -174,6 +188,16 @@ def create_kickstart_floppy(json_data):  # pylint: disable=too-many-locals
         disk_option = f"--disk={json_data['disk']}"
     else:
         disk_option = f"--firstdisk={json_data['firstdisk']}"
+    if json_data['clearpart']:
+        if 'disk' in json_data:
+            clearpart_line = f"clearpart --drives={json_data['disk']}"
+        else:
+            clearpart_line = f"clearpart --firstdisk={json_data['firstdisk']}"
+        if json_data['clearpart_overwritevmfs']:
+            clearpart_line += " --overwritevmfs"
+        clearpart_line += "\n"
+    else:
+        clearpart_line = ""
     rootpw = json_data['rootpw']
     device = json_data['device']
     ip = json_data['ip']
@@ -185,6 +209,7 @@ def create_kickstart_floppy(json_data):  # pylint: disable=too-many-locals
     kickstart_contents = (
         f"vmaccepteula\n"
         f"rootpw --iscrypted {rootpw}\n"
+        f"{clearpart_line}"
         f"install {disk_option} --preservevmfs\n"
         f"network --bootproto=static --device={device}"
         f" --ip={ip} --gateway={gateway} --nameserver={nameserver_str}"
