@@ -138,7 +138,13 @@ def cleanup():
             for item in expired_items:
                 app.logger.info("Deleting expired entry: %s", item.image_file)
                 image_path = os.path.join(app.config['KICKSTART_IMAGE_PATH'], item.image_file)
-                os.remove(image_path)
+                try:
+                    os.remove(image_path)
+                except FileNotFoundError:
+                    app.logger.warning(
+                        "Image file not found during cleanup, skipping removal: %s",
+                        image_path,
+                    )
                 db.session.delete(item)
             db.session.commit()
 

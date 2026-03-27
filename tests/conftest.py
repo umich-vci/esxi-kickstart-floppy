@@ -144,9 +144,9 @@ def sample_iso(tmp_path):
     a single ``kernelopt=runweasel cdromBoot\\n`` line – the default content
     present in unmodified ESXi boot configuration files.
 
-    The replacement ``kernelopt=runweasel ks=usb`` (26 chars) is shorter than
-    the original 30 chars, satisfying pycdlib's ``modify_file_in_place``
-    requirement that new content must not exceed the original file size.
+    In tests, this line is replaced with a shorter ``kernelopt=runweasel ks=usb``,
+    which satisfies pycdlib's ``modify_file_in_place`` requirement that
+    replacement content must not exceed the original file size.
     """
     boot_cfg_content = b"kernelopt=runweasel cdromBoot\n"
 
