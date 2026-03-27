@@ -203,6 +203,43 @@ def test_post_ks_clearpart_overwritevmfs_without_clearpart(client, auth_headers)
     assert client.post("/ks", json=payload, headers=auth_headers).status_code == 422
 
 
+def test_post_ks_disk_with_embedded_flag(client, auth_headers):
+    """POST /ks returns 422 when disk contains whitespace that could inject flags."""
+    payload = {**_VALID_PAYLOAD, "disk": "sda --overwritevmfs"}
+    assert client.post("/ks", json=payload, headers=auth_headers).status_code == 422
+
+
+def test_post_ks_disk_with_leading_dash(client, auth_headers):
+    """POST /ks returns 422 when disk starts with a dash."""
+    payload = {**_VALID_PAYLOAD, "disk": "--overwritevmfs"}
+    assert client.post("/ks", json=payload, headers=auth_headers).status_code == 422
+
+
+def test_post_ks_firstdisk_with_embedded_flag(client, auth_headers):
+    """POST /ks returns 422 when firstdisk contains whitespace that could inject flags."""
+    payload = {k: v for k, v in _VALID_PAYLOAD.items() if k != "disk"}
+    payload["firstdisk"] = "local --overwritevmfs"
+    assert client.post("/ks", json=payload, headers=auth_headers).status_code == 422
+
+
+def test_post_ks_hostname_with_embedded_flag(client, auth_headers):
+    """POST /ks returns 422 when hostname contains whitespace that could inject flags."""
+    payload = {**_VALID_PAYLOAD, "hostname": "host.example.com --addvmportgroup=0"}
+    assert client.post("/ks", json=payload, headers=auth_headers).status_code == 422
+
+
+def test_post_ks_device_with_embedded_flag(client, auth_headers):
+    """POST /ks returns 422 when device contains whitespace that could inject flags."""
+    payload = {**_VALID_PAYLOAD, "device": "vmnic0 --bootproto=dhcp"}
+    assert client.post("/ks", json=payload, headers=auth_headers).status_code == 422
+
+
+def test_post_ks_rootpw_with_embedded_flag(client, auth_headers):
+    """POST /ks returns 422 when rootpw contains whitespace that could inject flags."""
+    payload = {**_VALID_PAYLOAD, "rootpw": "$1$salt$hash --option"}
+    assert client.post("/ks", json=payload, headers=auth_headers).status_code == 422
+
+
 # ── GET /ks/<image_file> ──────────────────────────────────────────────────────
 
 

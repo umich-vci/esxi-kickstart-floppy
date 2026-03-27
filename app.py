@@ -22,20 +22,26 @@ from pycdlib.pycdlibexception import PyCdlibException
 from werkzeug.utils import secure_filename
 
 
-# Reject newlines and other control characters to prevent kickstart directive injection
-_NO_NEWLINE = Regexp(
-    r'^[^\r\n\x00-\x1f\x7f]+$',
-    error='Field must not contain newlines or control characters'
+# Applied to every field interpolated into a kickstart directive.
+# Blocks whitespace (prevents same-line flag injection such as "sda --overwritevmfs"),
+# leading dashes (prevents values that look like flags), and control characters
+# (prevents non-printable byte smuggling).
+# All affected fields -- disk identifiers, firstdisk filters, rootpw hashes,
+# vmnic/MAC device names, and hostnames -- are single tokens that never require
+# whitespace or a leading dash.
+_SAFE_TOKEN = Regexp(
+    r'^(?!-)[^\r\n\x00-\x1f\x7f\s]+$',
+    error='Field must not start with a dash, contain whitespace, or contain control characters'
 )
 
 class KickstartFloppyIn(Schema):
     """Input schema for creating a kickstart floppy image."""
 
-    hostname = String(required=True, validate=_NO_NEWLINE)
-    rootpw = String(required=True, validate=_NO_NEWLINE)
-    disk = String(required=False, validate=_NO_NEWLINE)
-    firstdisk = String(required=False, validate=_NO_NEWLINE)
-    device = String(required=False, load_default='vmnic0', validate=_NO_NEWLINE)
+    hostname = String(required=True, validate=_SAFE_TOKEN)
+    rootpw = String(required=True, validate=_SAFE_TOKEN)
+    disk = String(required=False, validate=_SAFE_TOKEN)
+    firstdisk = String(required=False, validate=_SAFE_TOKEN)
+    device = String(required=False, load_default='vmnic0', validate=_SAFE_TOKEN)
     ip = IPv4(required=True)
     netmask = IPv4(required=True)
     gateway = IPv4(required=True)
