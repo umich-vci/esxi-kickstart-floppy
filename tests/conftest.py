@@ -18,11 +18,11 @@ The Flask app module is imported once per session.  Key challenges handled here:
    uploaded ISOs never touch the real ``instance/`` tree.
 """
 
-import datetime
 import os
 from io import BytesIO
 from unittest.mock import patch
 
+import pycdlib
 import pytest
 
 # ── 1. Patch the scheduler before importing app ───────────────────────────────
@@ -64,10 +64,12 @@ def app(tmp_path_factory):
     # Dispose and remove the engine that was created at import time (pointing at
     # the production ``ks.db``), then re-register so the extension builds a new
     # engine for our temp database.
+    # pylint: disable=protected-access
     if inst in db._app_engines:
         for engine in db._app_engines[inst].values():
             engine.dispose()
         db._app_engines[inst].clear()
+    # pylint: enable=protected-access
 
     del inst.extensions["sqlalchemy"]
     db.init_app(inst)
@@ -83,7 +85,7 @@ def app(tmp_path_factory):
 
 # ── 3. Per-test DB cleanup (autouse) ─────────────────────────────────────────
 @pytest.fixture(autouse=True)
-def _clean_db(app):
+def _clean_db(app):  # pylint: disable=redefined-outer-name
     """Truncate all rows after every test to keep tests independent."""
     yield
     with app.app_context():
@@ -95,7 +97,7 @@ def _clean_db(app):
 
 # ── 4. Per-test filesystem cleanup (autouse) ─────────────────────────────────
 @pytest.fixture(autouse=True)
-def _clean_files(app):
+def _clean_files(app):  # pylint: disable=redefined-outer-name
     """Remove any files written to the temp ks/esxi directories after each test."""
     yield
     for directory in [app.config["KICKSTART_IMAGE_PATH"], app.config["ESXI_ISOS_PATH"]]:
@@ -107,7 +109,7 @@ def _clean_files(app):
 
 # ── 5. Common fixtures ────────────────────────────────────────────────────────
 @pytest.fixture
-def client(app):
+def client(app):  # pylint: disable=redefined-outer-name
     """Return a Flask test client."""
     return app.test_client()
 
@@ -119,7 +121,7 @@ def auth_headers():
 
 
 @pytest.fixture
-def blank_img(app):
+def blank_img(app):  # pylint: disable=redefined-outer-name
     """
     Return the path to ``blank.img`` in the application root.
 
@@ -146,8 +148,6 @@ def sample_iso(tmp_path):
     the original 30 chars, satisfying pycdlib's ``modify_file_in_place``
     requirement that new content must not exceed the original file size.
     """
-    import pycdlib
-
     boot_cfg_content = b"kernelopt=runweasel cdromBoot\n"
 
     iso = pycdlib.PyCdlib()

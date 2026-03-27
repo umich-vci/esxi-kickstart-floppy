@@ -4,9 +4,9 @@ import datetime
 import os
 import shutil
 
+import fs as pyfs
 import pytest
 
-import app as app_module
 from app import KickstartFloppyModel, db
 
 # ── Shared test data ──────────────────────────────────────────────────────────
@@ -27,46 +27,55 @@ _VALID_PAYLOAD = {
 
 
 def test_post_ks_missing_hostname(client, auth_headers):
+    """POST /ks returns 422 when hostname is absent."""
     payload = {k: v for k, v in _VALID_PAYLOAD.items() if k != "hostname"}
     assert client.post("/ks", json=payload, headers=auth_headers).status_code == 422
 
 
 def test_post_ks_newline_in_hostname(client, auth_headers):
+    """POST /ks returns 422 when hostname contains a newline."""
     payload = {**_VALID_PAYLOAD, "hostname": "host\ninjected=value"}
     assert client.post("/ks", json=payload, headers=auth_headers).status_code == 422
 
 
 def test_post_ks_control_char_in_rootpw(client, auth_headers):
+    """POST /ks returns 422 when rootpw contains a null byte."""
     payload = {**_VALID_PAYLOAD, "rootpw": "pass\x00word"}
     assert client.post("/ks", json=payload, headers=auth_headers).status_code == 422
 
 
 def test_post_ks_both_disk_and_firstdisk(client, auth_headers):
+    """POST /ks returns 422 when both disk and firstdisk are supplied."""
     payload = {**_VALID_PAYLOAD, "firstdisk": "local"}
     assert client.post("/ks", json=payload, headers=auth_headers).status_code == 422
 
 
 def test_post_ks_neither_disk_nor_firstdisk(client, auth_headers):
+    """POST /ks returns 422 when neither disk nor firstdisk is supplied."""
     payload = {k: v for k, v in _VALID_PAYLOAD.items() if k != "disk"}
     assert client.post("/ks", json=payload, headers=auth_headers).status_code == 422
 
 
 def test_post_ks_vlanid_too_low(client, auth_headers):
+    """POST /ks returns 422 when vlanid is below the minimum (1)."""
     payload = {**_VALID_PAYLOAD, "vlanid": 0}
     assert client.post("/ks", json=payload, headers=auth_headers).status_code == 422
 
 
 def test_post_ks_vlanid_too_high(client, auth_headers):
+    """POST /ks returns 422 when vlanid is above the maximum (4094)."""
     payload = {**_VALID_PAYLOAD, "vlanid": 4095}
     assert client.post("/ks", json=payload, headers=auth_headers).status_code == 422
 
 
 def test_post_ks_invalid_ip(client, auth_headers):
+    """POST /ks returns 422 when ip is not a valid IPv4 address."""
     payload = {**_VALID_PAYLOAD, "ip": "not-an-ip"}
     assert client.post("/ks", json=payload, headers=auth_headers).status_code == 422
 
 
 def test_post_ks_invalid_nameserver(client, auth_headers):
+    """POST /ks returns 422 when nameserver list contains an invalid address."""
     payload = {**_VALID_PAYLOAD, "nameserver": ["not-an-ip"]}
     assert client.post("/ks", json=payload, headers=auth_headers).status_code == 422
 
@@ -75,10 +84,8 @@ def test_post_ks_invalid_nameserver(client, auth_headers):
 
 
 @pytest.mark.integration
-def test_post_ks_success(client, auth_headers, blank_img, app):
+def test_post_ks_success(client, auth_headers, blank_img, app):  # pylint: disable=unused-argument
     """POST /ks returns 201 and writes a valid FAT floppy with ks.cfg inside."""
-    import fs as pyfs
-
     resp = client.post("/ks", json=_VALID_PAYLOAD, headers=auth_headers)
     assert resp.status_code == 201
 
@@ -105,7 +112,7 @@ def test_post_ks_success(client, auth_headers, blank_img, app):
 
 
 @pytest.mark.integration
-def test_post_ks_with_firstdisk(client, auth_headers, blank_img, app):
+def test_post_ks_with_firstdisk(client, auth_headers, blank_img, app):  # pylint: disable=unused-argument
     """firstdisk is accepted as an alternative to disk."""
     payload = {k: v for k, v in _VALID_PAYLOAD.items() if k != "disk"}
     payload["firstdisk"] = "local"
@@ -115,8 +122,6 @@ def test_post_ks_with_firstdisk(client, auth_headers, blank_img, app):
 
     data = resp.get_json()
     floppy_path = os.path.join(app.config["KICKSTART_IMAGE_PATH"], data["image_file"])
-    import fs as pyfs
-
     floppy_fs = pyfs.open_fs(f"fat://{floppy_path}?offset=512")
     ks_contents = floppy_fs.readtext("ks.cfg")
     floppy_fs.close()
@@ -124,11 +129,9 @@ def test_post_ks_with_firstdisk(client, auth_headers, blank_img, app):
 
 
 @pytest.mark.integration
-def test_post_ks_with_vlanid(client, auth_headers, blank_img, app):
+def test_post_ks_with_vlanid(client, auth_headers, blank_img, app):  # pylint: disable=unused-argument
     """An optional vlanid is included in the network line."""
     payload = {**_VALID_PAYLOAD, "vlanid": 100}
-    import fs as pyfs
-
     resp = client.post("/ks", json=payload, headers=auth_headers)
     assert resp.status_code == 201
 
@@ -144,6 +147,7 @@ def test_post_ks_with_vlanid(client, auth_headers, blank_img, app):
 
 
 def test_get_kickstart_floppy_not_found(client):
+    """GET /ks/<file> returns 404 when the image does not exist."""
     assert client.get("/ks/doesnotexist.img").status_code == 404
 
 

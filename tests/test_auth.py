@@ -26,6 +26,7 @@ _KS_PAYLOAD = {
     ids=["no_token", "wrong_token"],
 )
 def test_post_ks_rejects_bad_auth(client, headers):
+    """POST /ks returns 401 when the token is missing or invalid."""
     resp = client.post("/ks", json=_KS_PAYLOAD, headers=headers)
     assert resp.status_code == 401
 
@@ -39,6 +40,7 @@ def test_post_ks_rejects_bad_auth(client, headers):
     ids=["no_token", "wrong_token"],
 )
 def test_post_esxi_rejects_bad_auth(client, headers):
+    """POST /esxi returns 401 when the token is missing or invalid."""
     data = {"file": (io.BytesIO(b"data"), "test.iso")}
     resp = client.post(
         "/esxi",
@@ -58,5 +60,6 @@ def test_post_esxi_rejects_bad_auth(client, headers):
     ids=["no_token", "wrong_token"],
 )
 def test_delete_esxi_rejects_bad_auth(client, headers):
+    """DELETE /esxi/<file> returns 401 when the token is missing or invalid."""
     resp = client.delete("/esxi/test.iso", headers=headers)
     assert resp.status_code == 401
