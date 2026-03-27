@@ -215,11 +215,72 @@ def test_post_ks_disk_with_leading_dash(client, auth_headers):
     assert client.post("/ks", json=payload, headers=auth_headers).status_code == 422
 
 
-def test_post_ks_firstdisk_with_embedded_flag(client, auth_headers):
-    """POST /ks returns 422 when firstdisk contains whitespace that could inject flags."""
+@pytest.mark.integration
+def test_post_ks_firstdisk_with_space_then_dash_is_quoted(client, auth_headers, blank_img, app):  # pylint: disable=unused-argument
+    """firstdisk values like "local --overwritevmfs" are accepted and quoted as a single
+    token, preventing the trailing text from being interpreted as a separate flag."""
     payload = {k: v for k, v in _VALID_PAYLOAD.items() if k != "disk"}
     payload["firstdisk"] = "local --overwritevmfs"
+
+    resp = client.post("/ks", json=payload, headers=auth_headers)
+    assert resp.status_code == 201
+
+    data = resp.get_json()
+    floppy_path = os.path.join(app.config["KICKSTART_IMAGE_PATH"], data["image_file"])
+    floppy_fs = pyfs.open_fs(f"fat://{floppy_path}?offset=512")
+    ks_contents = floppy_fs.readtext("ks.cfg")
+    floppy_fs.close()
+
+    assert '--firstdisk="local --overwritevmfs"' in ks_contents
+
+
+def test_post_ks_firstdisk_with_leading_space(client, auth_headers):
+    """POST /ks returns 422 when firstdisk has a leading space."""
+    payload = {k: v for k, v in _VALID_PAYLOAD.items() if k != "disk"}
+    payload["firstdisk"] = " local"
     assert client.post("/ks", json=payload, headers=auth_headers).status_code == 422
+
+
+def test_post_ks_firstdisk_with_trailing_space(client, auth_headers):
+    """POST /ks returns 422 when firstdisk has a trailing space."""
+    payload = {k: v for k, v in _VALID_PAYLOAD.items() if k != "disk"}
+    payload["firstdisk"] = "local "
+    assert client.post("/ks", json=payload, headers=auth_headers).status_code == 422
+
+
+def test_post_ks_firstdisk_with_double_quote(client, auth_headers):
+    """POST /ks returns 422 when firstdisk contains a double quote."""
+    payload = {k: v for k, v in _VALID_PAYLOAD.items() if k != "disk"}
+    payload["firstdisk"] = 'Dell "BOSS-N1"'
+    assert client.post("/ks", json=payload, headers=auth_headers).status_code == 422
+
+
+def test_post_ks_firstdisk_with_backslash(client, auth_headers):
+    """POST /ks returns 422 when firstdisk contains a backslash."""
+    payload = {k: v for k, v in _VALID_PAYLOAD.items() if k != "disk"}
+    payload["firstdisk"] = "Dell\\BOSS-N1"
+    assert client.post("/ks", json=payload, headers=auth_headers).status_code == 422
+
+
+@pytest.mark.integration
+def test_post_ks_with_firstdisk_model_name_with_spaces(client, auth_headers, blank_img, app):  # pylint: disable=unused-argument
+    """firstdisk values containing spaces (e.g. model names) are accepted and quoted
+    on both the install line and the clearpart line."""
+    payload = {k: v for k, v in _VALID_PAYLOAD.items() if k != "disk"}
+    payload["firstdisk"] = "Dell BOSS-N1"
+    payload["clearpart"] = True
+
+    resp = client.post("/ks", json=payload, headers=auth_headers)
+    assert resp.status_code == 201
+
+    data = resp.get_json()
+    floppy_path = os.path.join(app.config["KICKSTART_IMAGE_PATH"], data["image_file"])
+    floppy_fs = pyfs.open_fs(f"fat://{floppy_path}?offset=512")
+    ks_contents = floppy_fs.readtext("ks.cfg")
+    floppy_fs.close()
+
+    assert '--firstdisk="Dell BOSS-N1"' in ks_contents
+    assert 'clearpart --firstdisk="Dell BOSS-N1"' in ks_contents
 
 
 def test_post_ks_hostname_with_embedded_flag(client, auth_headers):
