@@ -85,6 +85,10 @@ Alias /esxi-static /path/to/instance/esxi
 </Directory>
 ```
 
+## Testing
+
+See [TESTING.md](TESTING.md) for instructions on running the test suite locally.
+
 ## API Tokens
 
 By default, the application will generate a new API token every startup. Persistent tokens
