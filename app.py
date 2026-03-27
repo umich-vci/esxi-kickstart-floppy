@@ -42,6 +42,8 @@ class KickstartFloppyIn(Schema):
     nameserver = List(IPv4(), required=True)
     vlanid = Integer(required=False, validate=Range(min=1, max=4094))
     addvmportgroup = Boolean(required=False, load_default=True)
+    clearpart = Boolean(required=False, load_default=False)
+    clearpart_overwritevmfs = Boolean(required=False, load_default=False)
     allowed_ip = IPv4(required=True)
     timeout_minutes = Integer(required=False, load_default=60, validate=Range(min=1, max=1440))
 
@@ -54,6 +56,12 @@ class KickstartFloppyIn(Schema):
             raise ValidationError('One of "disk" or "firstdisk" must be provided.')
         if has_disk and has_firstdisk:
             raise ValidationError('Only one of "disk" or "firstdisk" may be provided.')
+
+    @validates_schema
+    def validate_clearpart_options(self, data, **_):
+        """Ensure clearpart_overwritevmfs is not set without clearpart."""
+        if data.get('clearpart_overwritevmfs') and not data.get('clearpart'):
+            raise ValidationError('"clearpart_overwritevmfs" requires "clearpart" to be true.')
 
 
 class KickstartFloppyOut(Schema):
@@ -174,6 +182,16 @@ def create_kickstart_floppy(json_data):  # pylint: disable=too-many-locals
         disk_option = f"--disk={json_data['disk']}"
     else:
         disk_option = f"--firstdisk={json_data['firstdisk']}"
+    if json_data['clearpart']:
+        if 'disk' in json_data:
+            clearpart_line = f"clearpart --drives={json_data['disk']}"
+        else:
+            clearpart_line = f"clearpart --firstdisk={json_data['firstdisk']}"
+        if json_data['clearpart_overwritevmfs']:
+            clearpart_line += " --overwritevmfs"
+        clearpart_line += "\n"
+    else:
+        clearpart_line = ""
     rootpw = json_data['rootpw']
     device = json_data['device']
     ip = json_data['ip']
@@ -185,6 +203,7 @@ def create_kickstart_floppy(json_data):  # pylint: disable=too-many-locals
     kickstart_contents = (
         f"vmaccepteula\n"
         f"rootpw --iscrypted {rootpw}\n"
+        f"{clearpart_line}"
         f"install {disk_option} --preservevmfs\n"
         f"network --bootproto=static --device={device}"
         f" --ip={ip} --gateway={gateway} --nameserver={nameserver_str}"

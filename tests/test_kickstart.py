@@ -143,6 +143,66 @@ def test_post_ks_with_vlanid(client, auth_headers, blank_img, app):  # pylint: d
     assert "--vlanid=100" in ks_contents
 
 
+@pytest.mark.integration
+def test_post_ks_with_clearpart_disk(client, auth_headers, blank_img, app):  # pylint: disable=unused-argument
+    """clearpart=True with disk uses --drives= and appears before install."""
+    payload = {**_VALID_PAYLOAD, "clearpart": True}
+    resp = client.post("/ks", json=payload, headers=auth_headers)
+    assert resp.status_code == 201
+
+    data = resp.get_json()
+    floppy_path = os.path.join(app.config["KICKSTART_IMAGE_PATH"], data["image_file"])
+    floppy_fs = pyfs.open_fs(f"fat://{floppy_path}?offset=512")
+    ks_contents = floppy_fs.readtext("ks.cfg")
+    floppy_fs.close()
+
+    assert "clearpart --drives=sda" in ks_contents
+    assert "--overwritevmfs" not in ks_contents.split("install")[0]
+    assert ks_contents.index("clearpart") < ks_contents.index("install")
+
+
+@pytest.mark.integration
+def test_post_ks_with_clearpart_firstdisk(client, auth_headers, blank_img, app):  # pylint: disable=unused-argument
+    """clearpart=True with firstdisk uses --firstdisk=."""
+    payload = {k: v for k, v in _VALID_PAYLOAD.items() if k != "disk"}
+    payload["firstdisk"] = "local"
+    payload["clearpart"] = True
+
+    resp = client.post("/ks", json=payload, headers=auth_headers)
+    assert resp.status_code == 201
+
+    data = resp.get_json()
+    floppy_path = os.path.join(app.config["KICKSTART_IMAGE_PATH"], data["image_file"])
+    floppy_fs = pyfs.open_fs(f"fat://{floppy_path}?offset=512")
+    ks_contents = floppy_fs.readtext("ks.cfg")
+    floppy_fs.close()
+
+    assert "clearpart --firstdisk=local" in ks_contents
+    assert ks_contents.index("clearpart") < ks_contents.index("install")
+
+
+@pytest.mark.integration
+def test_post_ks_with_clearpart_overwritevmfs(client, auth_headers, blank_img, app):  # pylint: disable=unused-argument
+    """clearpart_overwritevmfs=True appends --overwritevmfs to the clearpart line."""
+    payload = {**_VALID_PAYLOAD, "clearpart": True, "clearpart_overwritevmfs": True}
+    resp = client.post("/ks", json=payload, headers=auth_headers)
+    assert resp.status_code == 201
+
+    data = resp.get_json()
+    floppy_path = os.path.join(app.config["KICKSTART_IMAGE_PATH"], data["image_file"])
+    floppy_fs = pyfs.open_fs(f"fat://{floppy_path}?offset=512")
+    ks_contents = floppy_fs.readtext("ks.cfg")
+    floppy_fs.close()
+
+    assert "clearpart --drives=sda --overwritevmfs" in ks_contents
+
+
+def test_post_ks_clearpart_overwritevmfs_without_clearpart(client, auth_headers):
+    """POST /ks returns 422 when clearpart_overwritevmfs=True but clearpart=False."""
+    payload = {**_VALID_PAYLOAD, "clearpart_overwritevmfs": True}
+    assert client.post("/ks", json=payload, headers=auth_headers).status_code == 422
+
+
 # ── GET /ks/<image_file> ──────────────────────────────────────────────────────
 
 
