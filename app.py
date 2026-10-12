@@ -326,35 +326,33 @@ def post_esxi_iso(files_data):
         abort(400, 'Invalid filename')
     iso_path = os.path.join(app.config['ESXI_ISOS_PATH'], filename)
     file.save(iso_path)
-    iso = pycdlib.PyCdlib()
-    iso_opened = False
     try:
+        iso = pycdlib.PyCdlib()
+        iso.open(filename=iso_path)
         try:
-            iso.open(filename=iso_path, mode='r+b')
-            iso_opened = True
             boot_cfg = BytesIO()
             efi_boot_cfg = BytesIO()
             iso.get_file_from_iso_fp(boot_cfg, iso_path='/BOOT.CFG;1')
             iso.get_file_from_iso_fp(efi_boot_cfg, iso_path='/EFI/BOOT/BOOT.CFG;1')
-            boot_cfg_str = boot_cfg.getvalue().decode('ascii')
-            kernel_pattern = r'(kernelopt=.*)'
-            kernel_replacement = 'kernelopt=runweasel ks=usb'
-            boot_cfg_str_edit = re.sub(
-                kernel_pattern, kernel_replacement, boot_cfg_str)
-            efi_boot_cfg_str = efi_boot_cfg.getvalue().decode('ascii')
-            efi_boot_cfg_str_edit = re.sub(
-                kernel_pattern, kernel_replacement, efi_boot_cfg_str)
-            iso.modify_file_in_place(
-                BytesIO(boot_cfg_str_edit.encode()),
-                len(boot_cfg_str_edit),
-                '/BOOT.CFG;1')
-            iso.modify_file_in_place(
-                BytesIO(efi_boot_cfg_str_edit.encode()),
-                len(efi_boot_cfg_str_edit),
-                '/EFI/BOOT/BOOT.CFG;1')
         finally:
-            if iso_opened:
-                iso.close()
+            iso.close()
+        boot_cfg_str = boot_cfg.getvalue().decode('ascii')
+        kernel_pattern = r'(kernelopt=.*)'
+        kernel_replacement = 'kernelopt=runweasel ks=usb'
+        boot_cfg_edit = re.sub(
+            kernel_pattern, kernel_replacement, boot_cfg_str).encode('ascii')
+        efi_boot_cfg_str = efi_boot_cfg.getvalue().decode('ascii')
+        efi_boot_cfg_edit = re.sub(
+            kernel_pattern, kernel_replacement, efi_boot_cfg_str).encode('ascii')
+        with pycdlib.InPlaceEditor(iso_path) as editor:
+            editor.modify_file(
+                BytesIO(boot_cfg_edit),
+                len(boot_cfg_edit),
+                iso_path='/BOOT.CFG;1')
+            editor.modify_file(
+                BytesIO(efi_boot_cfg_edit),
+                len(efi_boot_cfg_edit),
+                iso_path='/EFI/BOOT/BOOT.CFG;1')
     except (PyCdlibException, UnicodeDecodeError) as e:
         app.logger.warning("Invalid ISO rejected: %s", e)
         if os.path.exists(iso_path):

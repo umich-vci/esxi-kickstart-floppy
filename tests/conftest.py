@@ -145,8 +145,8 @@ def sample_iso(tmp_path):
     present in unmodified ESXi boot configuration files.
 
     In tests, this line is replaced with a shorter ``kernelopt=runweasel ks=usb``,
-    which satisfies pycdlib's ``modify_file_in_place`` requirement that
-    replacement content must not exceed the original file size.
+    which satisfies pycdlib's ``InPlaceEditor.modify_file`` requirement that
+    replacement content must not occupy more extents than the original file.
     """
     boot_cfg_content = b"kernelopt=runweasel cdromBoot\n"
 
