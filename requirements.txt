@@ -1,4 +1,4 @@
-APIFlask==3.1.1
+APIFlask==3.1.2
 Flask-SQLAlchemy==3.1.1
 Flask-APScheduler==1.13.1
 pycdlib==1.16.0
